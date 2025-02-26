@@ -1,7 +1,6 @@
 import cv2
 import os
 
-
 def extract_frames_from_videos(input_json):
     # 从输入的 JSON 中获取必要的参数
     input_dir = input_json.get("path_in")
@@ -12,6 +11,7 @@ def extract_frames_from_videos(input_json):
     if not os.path.exists(input_dir):
         print(f"输入目录 {input_dir} 不存在。")
         return
+    
     # 若输出目录不存在，则创建它
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -19,11 +19,14 @@ def extract_frames_from_videos(input_json):
     # 遍历输入目录下的所有文件
     for filename in os.listdir(input_dir):
         file_path = os.path.join(input_dir, filename)
-        # 检查文件是否为视频文件
-        if os.path.isfile(file_path) and filename.lower().endswith(('.mp4', '.avi', '.mov')):
+        
+        # 检查文件是否为视频文件，现在包括 .mkv 格式
+        if os.path.isfile(file_path) and filename.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
             try:
-                # 创建以视频名（含后缀）命名的子文件夹
-                video_folder_path = os.path.join(output_dir, filename)
+                # 创建以视频名（不含后缀）命名的子文件夹
+                video_name_without_ext = os.path.splitext(filename)[0]
+                video_folder_path = os.path.join(output_dir, video_name_without_ext)
+                
                 if not os.path.exists(video_folder_path):
                     os.makedirs(video_folder_path)
 
@@ -51,6 +54,10 @@ def extract_frames_from_videos(input_json):
                         output_file_path = os.path.join(video_folder_path, output_filename)
                         # 保存帧为图片
                         cv2.imwrite(output_file_path, frame)
+                        if os.path.exists(output_file_path):
+                            print(f"Frame {output_count} saved successfully.")
+                        else:
+                            print(f"Failed to save frame {output_count}.")
                         output_count += 1
                     frame_count += 1
 
@@ -59,3 +66,4 @@ def extract_frames_from_videos(input_json):
                 print(f"已从视频 {filename} 中提取 {output_count} 帧图片，保存到 {video_folder_path}。")
             except Exception as e:
                 print(f"处理视频 {file_path} 时出错: {e}")
+

@@ -1,5 +1,5 @@
 '''
-视频按帧截图
+图片转bmp格式
 '''
 import sys, os
 script_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -9,8 +9,7 @@ from functions import *
 input_json = {
     "path_in": r"E:\ws-code\test\test_in",
     "path_out": r"E:\ws-code\test\test_out",
-    "frame_rate" : 5
 }
 
 
-extract_frames_from_videos(input_json)
+images_to_bmp(input_json)

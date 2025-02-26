@@ -7,7 +7,7 @@ def img_cut(input_json):
     path_in = input_json.get("path_in")
     path_out = input_json.get("path_out")
     output_width = input_json.get("output_width")
-    output_height = input_json.get("output_hight")
+    output_height = input_json.get("output_height")  # 修正拼写错误：output_hight -> output_height
     keep_aspect_ratio = input_json.get("keep_aspect_ratio", False)
 
     # 检查输入路径和输出路径是否存在
@@ -17,11 +17,16 @@ def img_cut(input_json):
     if not os.path.exists(path_out):
         os.makedirs(path_out)
 
+    # 检查 output_width 和 output_height 是否存在
+    if output_width is None or output_height is None:
+        print("错误：output_width 或 output_height 未提供，请检查输入参数。")
+        return
+
     # 遍历输入路径下的所有文件
     for filename in os.listdir(path_in):
         file_path = os.path.join(path_in, filename)
-        # 检查文件是否为图片文件
-        if os.path.isfile(file_path) and filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        # 检查文件是否为图片文件（支持 BMP、PNG、JPG、JPEG）
+        if os.path.isfile(file_path) and filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
             try:
                 # 打开图片
                 with Image.open(file_path) as img:
@@ -56,7 +61,7 @@ def img_cut(input_json):
 
                     # 构建输出文件的完整路径
                     output_file_path = os.path.join(path_out, filename)
-                    # 保存处理后的图片
+                    # 保存处理后的图片（保持原始格式）
                     img.save(output_file_path)
                     print(f"已处理并保存图片: {output_file_path}")
             except Exception as e:

@@ -1,5 +1,6 @@
 '''
-图片压缩裁剪
+视频按帧截图
+path不支持中文路径
 '''
 import sys, os
 script_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -9,10 +10,8 @@ from functions import *
 input_json = {
     "path_in": r"E:\ws-code\test\test_in",
     "path_out": r"E:\ws-code\test\test_out",
-    "keep_aspect_ratio" : True, # 保持长宽比缩放后裁剪
-    "output_width" : 320,
-    "output_hight" : 240
+    "frame_rate" : 4
 }
 
 
-img_cut(input_json)
+extract_frames_from_videos(input_json)

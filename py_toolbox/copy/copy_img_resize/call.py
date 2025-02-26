@@ -1,5 +1,5 @@
 '''
-多张图片合成gif
+图片压缩裁剪
 '''
 import sys, os
 script_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -9,10 +9,10 @@ from functions import *
 input_json = {
     "path_in": r"E:\ws-code\test\test_in",
     "path_out": r"E:\ws-code\test\test_out",
-    "output_name": "output.gif",
-    "frame_duration": 50,  # 每帧持续时间
-    "loop": 0  # 无限循环
+    "keep_aspect_ratio" : True, # 保持长宽比缩放后裁剪
+    "output_width" : 320,
+    "output_height" : 240
 }
 
 
-images_to_gif(input_json)
+img_cut(input_json)
