@@ -7,8 +7,8 @@ sys.path.append(script_path)
 from functions import *
 
 input_json = {
-    "path_in": r"D:\wfs\麻生 2024.09.29.part1",
-    "path_out": r"D:\wfs\麻生 2024.09.29.part1test",
+    "path_in": r"E:\ws-code\test\test_in",
+    "path_out": r"E:\ws-code\test\test_out",
     "merge": False # 暂不支持合并图层，有bug懒得修了 
 }
 
