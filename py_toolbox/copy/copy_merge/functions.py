@@ -1,9 +1,3 @@
-"""
-create: 2024.10.02
-modify: 2024.10.02
-目录拷贝展平，合并文件夹名称
-"""
-
 import os
 import shutil
 
@@ -13,6 +7,8 @@ def check_inputs(input_json):
     output_json = input_json
     if not 'if_count' in output_json:
         output_json['if_count'] = True
+    if not 'flatten_level' in output_json:
+        output_json['flatten_level'] = 0
     return output_json
 
 
@@ -22,61 +18,56 @@ def count_files(path_in):
     for _, _, files in os.walk(path_in):
         file_count += len(files)
     return file_count
-
-
 def copy_with_structure_flatten(input_json):
     input_json = check_inputs(input_json)
     path_in = input_json["path_in"]
     path_out = input_json["path_out"]
+    flatten_level = input_json.get("flatten_level", 0)  # 默认为0级展平
 
     # 检查输入目录是否存在
     if not os.path.exists(path_in):
         print(f"Error: The source path {path_in} does not exist.")
         return
 
-        # 计算文件总数
-    if input_json['if_count']:
-        total_files = count_files(path_in)
-        if total_files == 0:
-            print(f"No files to copy in {path_in}.")
-            return
-    else:
-        total_files = 0
+    total_files = count_files(path_in) if input_json['if_count'] else 0
+    if total_files == 0:
+        print(f"No files to copy in {path_in}.")
+        return
 
-    file_index = 0  # 当前文件的序号
+    file_index = 0
 
-    # 遍历输入目录并保持结构复制到输出目录
     for root, dirs, files in os.walk(path_in):
-        # 计算当前目录的相对路径（相对于path_in）
         rel_path = os.path.relpath(root, path_in)
+        split_rel_path = rel_path.split(os.sep)
 
-        # 拷贝文件
+        # 根据当前文件的相对路径深度和展平级别计算新的相对路径
+        if len(split_rel_path) > flatten_level:
+            keep_dirs = split_rel_path[:flatten_level]
+            extra_path_parts = split_rel_path[flatten_level:]
+        else:
+            keep_dirs = split_rel_path
+            extra_path_parts = []
+
         for file in files:
             file_index += 1
             src_file = os.path.join(root, file)
 
-            # 构建新的文件名：将相对路径与文件名组合在一起，中间用 '.' 连接
-            # 如果当前文件在子目录中，rel_path 会是子目录的路径
-            if rel_path == '.':
-                # 如果是根目录中的文件，不需要加目录名
-                dest_file_name = file
+            if len(keep_dirs) > 0:
+                # 当有需要保留的目录层级时
+                kept_path = os.path.join(*keep_dirs)
+                dest_file_name = f"{kept_path}{os.sep if kept_path else ''}{'.'.join(extra_path_parts)}.{file}" if extra_path_parts else os.path.join(kept_path, file)
             else:
-                # 将目录名和文件名用 '.' 连接
-                dest_file_name = f"{rel_path.replace(os.sep, '.')}.{file}"
+                # 展平所有层级的情况
+                dest_file_name = f"{'.'.join(extra_path_parts)}.{file}" if extra_path_parts else file
 
-            # 最终目标文件路径
             dest_file = os.path.join(path_out, dest_file_name)
 
-            # 如果目标文件已存在，跳过复制并输出 pass
             if os.path.exists(dest_file):
                 print(f"{file_index}/{total_files} Pass: {dest_file} already exists.")
             else:
-                # 确保输出目录存在
-                if not os.path.exists(path_out):
-                    os.makedirs(path_out)
-
+                if not os.path.exists(os.path.dirname(dest_file)):
+                    os.makedirs(os.path.dirname(dest_file))
                 shutil.copy2(src_file, dest_file)
                 print(f"{file_index}/{total_files} Copied: {src_file} to {dest_file}")
 
-    print(f"All files copied from {path_in} to {path_out} while flattening the directory structure.")
-
+    print(f"All files copied from {path_in} to {path_out} while flattening the directory structure according to level {flatten_level}.")

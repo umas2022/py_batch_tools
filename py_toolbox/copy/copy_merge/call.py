@@ -7,10 +7,11 @@ sys.path.append(script_path)
 from functions import *
 
 input_json = {
-    "path_in": r"path",
-    "path_out": r"path",
+    "path_in": r"E:\ws-code\test\test_in",
+    "path_out": r"E:\ws-code\test\test_out",
     # 是否计数
     "if_count": True,
+    "flatten_level": 0  # 展平级数
 }
 
 
