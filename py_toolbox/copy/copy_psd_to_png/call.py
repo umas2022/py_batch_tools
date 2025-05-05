@@ -7,9 +7,12 @@ sys.path.append(script_path)
 from functions import *
 
 input_json = {
+    # 输入路径
     "path_in": r"E:\ws-code\test\test_in",
+    # 输出路径
     "path_out": r"E:\ws-code\test\test_out",
-    "merge": False # 暂不支持合并图层，有bug懒得修了 
+    # 合并图层？
+    "merge": False
 }
 
 
