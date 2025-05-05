@@ -9,7 +9,12 @@ def save_image(image: Image.Image, out_path: str):
 
 def process_psd_file(file_path, path_in, out_root, merge):
     print(f"\n处理文件: {file_path}")
-    psd = PSDImage.open(file_path)
+    try:
+        psd = PSDImage.open(file_path)
+    except Exception as e:
+        print(f"  [!] 无法打开文件（非标准 PSD？）跳过：{file_path}")
+        print(f"      错误信息: {e}")
+        return
     rel_path = os.path.relpath(file_path, start=path_in)
     base_name = os.path.splitext(rel_path)[0]
     out_dir = os.path.join(out_root, os.path.dirname(base_name))
