@@ -1,5 +1,5 @@
 '''
-备份升级，删除差异
+批量修改后缀名
 '''
 import sys, os
 script_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -7,9 +7,10 @@ sys.path.append(script_path)
 from functions import *
 
 input_json = {
-    "path_in": r"F:",
-    "path_out": r"\\192.168.3.226\hdd-4t",
+    "path_in": r"D:\ws-code\test\test_in",
+    "old_suffix": ".txt",
+    "new_suffix": ".md",
 }
 
 
-copy_with_structure(input_json)
+change_suffix(input_json)
