@@ -1,107 +1,252 @@
 '''
 create: 2024.10.03
-modify: 2024.10.03
-备份更新，首先删除path_out中的旧内容，再拷贝path_in目录
+modify: 2026.01.06
+备份更新，首先删除path_out中的旧内容，再以path_in目录为基准拷贝新内容到path_out
+shutil.copy2()保留文件元数据（时间戳等），删除时比对文件大小和修改时间
+
+多线程硬盘同步备份脚本
+特点：
+- 阶段化：清理 -> 构建任务 -> 并行复制
+- 多线程复制（显著提速）
+- 安全删除（不与复制并行）
+- 实时进度反馈
 '''
+
 import os
 import shutil
 import filecmp
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-def check_inputs(input_json):
-    """赋值默认参数"""
-    output_json = input_json
-    if not 'if_count' in output_json:
-        output_json['if_count'] = True
-    return output_json
+# ===================== 参数与默认配置 =====================
+
+def check_inputs(cfg):
+    cfg = dict(cfg)
+    cfg.setdefault("if_count", True)
+    cfg.setdefault("copy_workers", min(8, (os.cpu_count() or 4) * 2))
+    cfg.setdefault("delete_workers", min(4, os.cpu_count() or 2))
+    cfg.setdefault("report_interval", 2.0)
+    return cfg
 
 
-def count_files(path_in):
-    """计算输入目录下的所有文件数量"""
-    file_count = 0
-    for _, _, files in os.walk(path_in):
-        file_count += len(files)
-    return file_count
+# ===================== 工具函数 =====================
+
+def files_are_different(src, dst, time_tolerance=1):
+    """
+    高效文件一致性判断：
+    - size 不同 → 不同
+    - mtime 差异在容忍范围内 → 认为相同
+    """
+    try:
+        src_stat = os.stat(src)
+        dst_stat = os.stat(dst)
+
+        if src_stat.st_size != dst_stat.st_size:
+            return True
+
+        if abs(src_stat.st_mtime - dst_stat.st_mtime) <= time_tolerance:
+            return False
+
+        return True  # mtime 不同，认为不同（不做内容比对）
+
+    except OSError:
+        return True
 
 
-def delete_inconsistent_files(path_in, path_out):
-    """删除path_out中与path_in不一致的文件或目录"""
+# ===================== 阶段 1：清理目标目录 =====================
+
+def delete_worker(task):
+    kind, path = task
+    try:
+        if kind == "file":
+            os.remove(path)
+        elif kind == "dir":
+            shutil.rmtree(path)
+        return True
+    except Exception:
+        return False
+
+
+def clean_target(path_in, path_out, workers=4, report_interval=2.0):
+    print("\n[STEP 1/3] Cleaning target directory...")
+    start = last = time.time()
+
+    delete_tasks = []
+    scanned = 0
+
     for root, dirs, files in os.walk(path_out):
-        # 计算对应的path_in中的路径
-        rel_path = os.path.relpath(root, path_out)
-        corresponding_in_path = os.path.join(path_in, rel_path)
+        rel = os.path.relpath(root, path_out)
+        src_root = os.path.join(path_in, rel)
 
-        # 如果path_in中没有该目录，删除path_out中的该目录
-        if not os.path.exists(corresponding_in_path):
-            print(f"Deleting directory: {root}")
-            shutil.rmtree(root)
+        # 整个目录不存在 → 删除
+        if not os.path.exists(src_root):
+            delete_tasks.append(("dir", root))
             continue
 
-        # 删除不在path_in中的文件
-        for file in files:
-            corresponding_file_in = os.path.join(corresponding_in_path, file)
-            file_in_out = os.path.join(root, file)
-            if not os.path.exists(corresponding_file_in):
-                # 如果path_in中没有该文件，则删除
-                print(f"Deleting file: {file_in_out}")
-                os.remove(file_in_out)
-            elif not filecmp.cmp(corresponding_file_in, file_in_out, shallow=False):
-                # 如果文件内容不同，也删除
-                print(f"Deleting inconsistent file: {file_in_out}")
-                os.remove(file_in_out)
+        for f in files:
+            scanned += 1
+            dst_file = os.path.join(root, f)
+            src_file = os.path.join(src_root, f)
 
+            if not os.path.exists(src_file) or files_are_different(src_file, dst_file):
+                delete_tasks.append(("file", dst_file))
 
-def copy_with_structure(input_json):
-    input_json = check_inputs(input_json)
-    path_in = input_json["path_in"]
-    path_out = input_json["path_out"]
+            now = time.time()
+            if now - last > report_interval:
+                print(f"  Scanned: {scanned} | Delete queued: {len(delete_tasks)}")
+                last = now
 
-    # 检查输入目录是否存在
-    if not os.path.exists(path_in):
-        print(f"Error: The source path {path_in} does not exist.")
-        return
-
-    # 删除path_out中与path_in不一致的内容
-    if os.path.exists(path_out):
-        delete_inconsistent_files(path_in, path_out)
-
-    # 计算文件总数
-    if input_json['if_count']:
-        total_files = count_files(path_in)
-        if total_files == 0:
-            print(f"No files to copy in {path_in}.")
-            return
-    else:
-        total_files = 0
-
-    file_index = 0  # 当前文件的序号
-
-    # 遍历输入目录并保持结构复制到输出目录
-    for root, dirs, files in os.walk(path_in):
-        # 计算目标目录中当前目录的路径
-        rel_path = os.path.relpath(root, path_in)
-        dest_dir = os.path.join(path_out, rel_path)
-
-        # 如果目标目录不存在，创建它
-        if not os.path.exists(dest_dir):
-            os.makedirs(dest_dir)
-
-        # 拷贝文件
-        for file in files:
-            file_index += 1
-            src_file = os.path.join(root, file)
-            dest_file = os.path.join(dest_dir, file)
-
-            # 如果目标文件已存在，跳过复制并输出 pass
-            if os.path.exists(dest_file):
-                print(f"{file_index}/{total_files} Pass: {dest_file} already exists.")
-            else:
-                shutil.copy2(src_file, dest_file)
-                print(f"{file_index}/{total_files} Copied: {src_file} to {dest_file}")
+    deleted = 0
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = [ex.submit(delete_worker, t) for t in delete_tasks]
+        for f in as_completed(futures):
+            if f.result():
+                deleted += 1
 
     print(
-        f"All files copied from {path_in} to {path_out} while maintaining directory structure."
+        f"[DONE] Clean finished | Scanned: {scanned} | "
+        f"Deleted: {deleted} | Time: {time.time() - start:.1f}s"
     )
 
 
+# ===================== 阶段 2：构建复制任务 =====================
 
+def count_files(path, report_interval=2.0):
+    print("\n[STEP 2/3] Counting source files...")
+    start = last = time.time()
+    total = 0
+
+    for _, _, files in os.walk(path):
+        total += len(files)
+        now = time.time()
+        if now - last > report_interval:
+            print(f"  Counted: {total}")
+            last = now
+
+    print(f"[DONE] Total files: {total} | Time: {time.time() - start:.1f}s")
+    return total
+
+
+def build_copy_tasks(path_in, path_out):
+    tasks = []
+
+    for root, _, files in os.walk(path_in):
+        rel = os.path.relpath(root, path_in)
+        dst_dir = os.path.join(path_out, rel)
+        os.makedirs(dst_dir, exist_ok=True)
+
+        for f in files:
+            src = os.path.join(root, f)
+            dst = os.path.join(dst_dir, f)
+            tasks.append((src, dst))
+
+    return tasks
+
+
+# ===================== 阶段 3：并行复制 =====================
+
+def copy_one(src, dst):
+    if os.path.exists(dst):
+        return "skipped"
+    shutil.copy2(src, dst)
+    return "copied"
+
+
+def parallel_copy(tasks, workers=8, report_interval=2.0):
+    print("\n[STEP 3/3] Parallel copying...")
+    start = last = time.time()
+
+    total = len(tasks)
+    done = copied = skipped = 0
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = {
+            ex.submit(copy_one, src, dst): (src, dst)
+            for src, dst in tasks
+        }
+
+        for f in as_completed(futures):
+            result = f.result()
+            done += 1
+            if result == "copied":
+                copied += 1
+            else:
+                skipped += 1
+
+            now = time.time()
+            if now - last > report_interval:
+                speed = done / max(now - start, 0.1)
+                percent = done / total * 100 if total else 100
+                print(
+                    f"  [{percent:5.1f}%] {done}/{total} | "
+                    f"Copied: {copied} | Skipped: {skipped} | "
+                    f"{speed:.1f} files/s"
+                )
+                last = now
+
+    print(
+        f"\n[DONE] Copy finished | Total: {total} | "
+        f"Copied: {copied} | Skipped: {skipped} | "
+        f"Time: {time.time() - start:.1f}s"
+    )
+
+
+# ===================== 主入口 =====================
+
+def copy_with_structure(cfg):
+    cfg = check_inputs(cfg)
+    path_in = cfg["path_in"]
+    path_out = cfg["path_out"]
+
+    print("[INIT] Backup sync started")
+    print(f"[INIT] Source: {path_in}")
+    print(f"[INIT] Target: {path_out}")
+
+    if not os.path.exists(path_in):
+        print("[ERROR] Source path does not exist")
+        return
+
+    os.makedirs(path_out, exist_ok=True)
+
+    try:
+        clean_target(
+            path_in,
+            path_out,
+            workers=cfg["delete_workers"],
+            report_interval=cfg["report_interval"],
+        )
+
+        if cfg["if_count"]:
+            total = count_files(path_in, cfg["report_interval"])
+            if total == 0:
+                print("[INFO] Nothing to copy")
+                return
+
+        print("\n[INFO] Building copy task list...")
+        tasks = build_copy_tasks(path_in, path_out)
+        print(f"[INFO] Tasks built: {len(tasks)}")
+
+        parallel_copy(
+            tasks,
+            workers=cfg["copy_workers"],
+            report_interval=cfg["report_interval"],
+        )
+
+    except KeyboardInterrupt:
+        print("\n[INTERRUPTED] Backup cancelled by user")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"C:\Users\umas_local\Documents\user",
+        "path_out": r"D:\backup_dell_user",
+        "if_count": True,
+        "copy_workers": 8,     # HDD: 4~8, SSD: 8~16
+        "delete_workers": 4,
+        "report_interval": 2.0
+    }
+
+    copy_with_structure(config)
