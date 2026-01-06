@@ -147,10 +147,23 @@ def build_copy_tasks(path_in, path_out):
 # ===================== 阶段 3：并行复制 =====================
 
 def copy_one(src, dst):
-    if os.path.exists(dst):
-        return "skipped"
-    shutil.copy2(src, dst)
-    return "copied"
+    try:
+        if os.path.exists(dst):
+            return "skipped"
+
+        dst_dir = os.path.dirname(dst)
+        os.makedirs(dst_dir, exist_ok=True)  # ⭐ 关键
+
+        shutil.copy2(src, dst)
+        return "copied"
+
+    except FileNotFoundError:
+        # 源文件或目标路径瞬间消失（并发下正常）
+        return "failed"
+
+    except Exception as e:
+        return f"error: {e}"
+
 
 
 def parallel_copy(tasks, workers=8, report_interval=2.0):
@@ -158,7 +171,7 @@ def parallel_copy(tasks, workers=8, report_interval=2.0):
     start = last = time.time()
 
     total = len(tasks)
-    done = copied = skipped = 0
+    done = copied = skipped = failed = 0
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = {
@@ -167,12 +180,18 @@ def parallel_copy(tasks, workers=8, report_interval=2.0):
         }
 
         for f in as_completed(futures):
-            result = f.result()
+            try:
+                result = f.result()
+            except Exception as e:
+                result = f"error: {e}"
+
             done += 1
             if result == "copied":
                 copied += 1
-            else:
+            elif result == "skipped":
                 skipped += 1
+            else:
+                failed += 1
 
             now = time.time()
             if now - last > report_interval:
