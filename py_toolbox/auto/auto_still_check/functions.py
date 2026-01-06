@@ -63,3 +63,14 @@ def still_check(json_set):
                 break
 
     print(f"{win_name} 已静止，可进行后续操作")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_cash": r"C:\temp\screenshots",
+        "win_name": "Calculator",
+        "interval_time": 1,
+    }
+    still_check(config)

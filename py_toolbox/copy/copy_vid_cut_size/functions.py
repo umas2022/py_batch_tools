@@ -51,3 +51,17 @@ def video_cut(params):
             ]
             subprocess.run(command, check=True)
             print(f"已从视频 {filename} 中裁剪出 {output_file_path}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\videos",
+        "path_out": r"D:\test\output",
+        "x_start": 0.1,
+        "x_end": 0.9,
+        "y_start": 0.1,
+        "y_end": 0.9,
+    }
+    video_cut(config)

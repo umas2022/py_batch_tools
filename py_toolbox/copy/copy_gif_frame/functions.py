@@ -39,3 +39,13 @@ def extract_frames_from_gif(input_json):
 
             except Exception as e:
                 print(f"处理 GIF 文件 {file_path} 时出错: {e}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\gifs",
+        "path_out": r"D:\test\gif_frames",
+    }
+    extract_frames_from_gif(config)

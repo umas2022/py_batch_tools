@@ -72,3 +72,14 @@ def copy_with_structure(input_json):
     print(
         f"All files copied from {path_in} to {path_out} while maintaining directory structure."
     )
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\input",
+        "path_out": r"D:\test\output",
+        "if_count": True,
+    }
+    copy_with_structure(config)

@@ -71,3 +71,15 @@ def copy_with_structure_flatten(input_json):
                 print(f"{file_index}/{total_files} Copied: {src_file} to {dest_file}")
 
     print(f"All files copied from {path_in} to {path_out} while flattening the directory structure according to level {flatten_level}.")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\input",
+        "path_out": r"D:\test\output",
+        "if_count": True,
+        "flatten_level": 0,
+    }
+    copy_with_structure_flatten(config)

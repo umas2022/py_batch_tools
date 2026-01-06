@@ -55,3 +55,16 @@ def images_to_gif(input_json):
         print(f"已将图片合成 GIF 并保存到 {full_output_path}")
     except Exception as e:
         print(f"合成 GIF 时出错: {e}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\input_images",
+        "path_out": r"D:\test\output_gif",
+        "output_name": "output.gif",
+        "frame_duration": 100,
+        "loop": 0,
+    }
+    images_to_gif(config)

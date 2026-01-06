@@ -38,3 +38,13 @@ def images_to_jpeg(input_json):
                     print(f"已将 {filename} 转换为 JPEG 格式并保存到 {output_path}")
             except Exception as e:
                 print(f"处理 {filename} 时出错: {e}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\input_images",
+        "path_out": r"D:\test\output_jpeg",
+    }
+    images_to_jpeg(config)

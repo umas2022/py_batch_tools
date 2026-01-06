@@ -41,7 +41,7 @@ pip freeze > requirements.txt
     - 图片转bmp格式
   - copy_img_to_gif
     - 图片合成gif
-  - copy_image_to_jpeg
+  - copy_img_to_jpeg
     - 图片转jpeg格式
   - copy_merge
     - 拷贝合并，展平内部文件结构

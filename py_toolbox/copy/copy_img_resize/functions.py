@@ -66,3 +66,16 @@ def img_cut(input_json):
                     print(f"已处理并保存图片: {output_file_path}")
             except Exception as e:
                 print(f"处理图片 {file_path} 时出错: {e}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\input_images",
+        "path_out": r"D:\test\output_images",
+        "output_width": 800,
+        "output_height": 600,
+        "keep_aspect_ratio": True,
+    }
+    img_cut(config)
