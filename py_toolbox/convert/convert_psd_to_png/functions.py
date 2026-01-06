@@ -67,3 +67,14 @@ def psd_to_png(input_json):
         return
 
     print(f"\n✅ 处理完成，共处理 PSD 文件数: {total_files}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\psd_files",
+        "path_out": r"D:\test\png_output",
+        "merge": False,
+    }
+    psd_to_png(config)

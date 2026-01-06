@@ -33,3 +33,14 @@ def rotate_images(input_json):
                     print(f"已旋转并保存图片: {output_file_path}")
             except Exception as e:
                 print(f"处理图片 {file_path} 时出错: {e}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\input_images",
+        "path_out": r"D:\test\output_images",
+        "angle": 90,
+    }
+    rotate_images(config)

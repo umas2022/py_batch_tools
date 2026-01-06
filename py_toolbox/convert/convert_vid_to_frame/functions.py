@@ -67,3 +67,14 @@ def extract_frames_from_videos(input_json):
             except Exception as e:
                 print(f"处理视频 {file_path} 时出错: {e}")
 
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\videos",
+        "path_out": r"D:\test\frames",
+        "frame_rate": 1,
+    }
+    extract_frames_from_videos(config)
+

@@ -32,10 +32,12 @@ def images_to_bmp(input_json):
         else:
             print(f"Skipping non-image file: {filename}")
 
-# 示例调用
-input_json = {
-    "path_in": r"E:\ws-code\test\test_in",
-    "path_out": r"E:\ws-code\test\test_out",
-}
 
-images_to_bmp(input_json)
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\input_images",
+        "path_out": r"D:\test\output_bmp",
+    }
+    images_to_bmp(config)

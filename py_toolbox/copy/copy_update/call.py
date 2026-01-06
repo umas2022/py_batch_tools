@@ -7,8 +7,10 @@ sys.path.append(script_path)
 from functions import *
 
 input_json = {
-    "path_in": r"F:",
-    "path_out": r"\\192.168.3.226\hdd-4t",
+    "path_in": r"C:\Users\umas_local\Documents\user",
+    "path_out": r"D:\backup_dell_user",
+    # 是否计数
+    "if_count": True,
 }
 
 

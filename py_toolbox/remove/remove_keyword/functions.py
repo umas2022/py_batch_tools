@@ -46,3 +46,14 @@ def remove_keyword(input_json):
                     print(f"已删除目录: {dir_path}")
                 except Exception as e:
                     print(f"删除目录失败: {dir_path}, 错误: {e}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\files",
+        "key_world": "temp",
+        "target": "all",
+    }
+    remove_keyword(config)

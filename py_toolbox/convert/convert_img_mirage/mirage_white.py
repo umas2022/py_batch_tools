@@ -171,3 +171,14 @@ def build(source_y: str, target_name: str, shrink: float = 1):
     cv2.imwrite(target_name, add_mask(divided, linear_dodged))
     print("finished")
 
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "source_y": r"D:\test\input.png",
+        "target_name": r"D:\test\output.png",
+        "shrink": 1,
+    }
+    build(config["source_y"], config["target_name"], config["shrink"])
+

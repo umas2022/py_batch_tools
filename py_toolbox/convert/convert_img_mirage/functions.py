@@ -29,3 +29,13 @@ def create_mirage_tank(input_json):
                 print(f"成功为 {full_in} 创建幻影坦克图片")
             except Exception as e:
                 print(f"为 {full_in} 创建幻影坦克图片时出错: {e}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\images",
+        "path_out": r"D:\test\mirage",
+    }
+    create_mirage_tank(config)

@@ -55,3 +55,14 @@ def add_prefix(input_json):
                     print(f"已重命名文件: {old_file_path} -> {new_file_path}")
                 except Exception as e:
                     print(f"重命名文件失败: {old_file_path}, 错误: {e}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\files",
+        "prefix": "prefix_",
+        "target": "all",
+    }
+    add_prefix(config)

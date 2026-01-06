@@ -48,3 +48,17 @@ def video_resize(input_json):
             subprocess.run(ffmpeg_cmd)
 
     print("视频压缩裁剪完成！")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\videos",
+        "path_out": r"D:\test\output",
+        "keep_aspect_ratio": True,
+        "frame_rate": 30,
+        "output_width": 1280,
+        "output_hight": 720,
+    }
+    video_resize(config)

@@ -50,3 +50,15 @@ def rename_files_by_sequence(input_json):
                     print(f"已将 {file_path} 复制并重命名为 {new_file_path}")
             except Exception as e:
                 print(f"处理文件 {file_path} 时出错: {e}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\input",
+        "path_out": r"D:\test\output",
+        "num_length": 4,
+        "overwrite": False,
+    }
+    rename_files_by_sequence(config)
