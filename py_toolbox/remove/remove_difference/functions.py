@@ -59,3 +59,14 @@ def remove_difference(input_json):
                     print(f"已删除目录: {dir_to_delete}")
                 except Exception as e:
                     print(f"删除目录失败: {dir_to_delete}, 错误: {e}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_base": r"D:\test\base",
+        "path_del": r"D:\test\delete",
+        "target": "all",
+    }
+    remove_difference(config)

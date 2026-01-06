@@ -29,34 +29,50 @@ pip freeze > requirements.txt
 - copy
   - copy_basic
     - 简单拷贝
-  - copy_gif_frame
-    - 提取gif中的帧
-  - copy_img_mirage
-    - 图片生成幻影坦克
-  - copy_img_resize
-    - 图片压缩裁剪
-  - copy_img_rotate
-    - 图片旋转
-  - copy_img_to_bmp
-    - 图片转bmp格式
-  - copy_img_to_gif
-    - 图片合成gif
-  - copy_img_to_jpeg
-    - 图片转jpeg格式
   - copy_merge
     - 拷贝合并，展平内部文件结构
-  - copy_psd_to_png
-    - psd导出png
   - copy_update
     - 拷贝升级，仅拷贝有变化的文件
-  - copy_vid_cut_size
+
+- convert
+  - convert_gif_to_frame
+    - 提取gif中的帧
+  - convert_img_mirage
+    - 图片生成幻影坦克
+  - convert_img_resize
+    - 图片压缩裁剪
+  - convert_img_rotate
+    - 图片旋转
+  - convert_img_to_bmp
+    - 图片转bmp格式
+  - convert_img_to_gif
+    - 图片合成gif
+  - convert_img_to_jpeg
+    - 图片转jpeg格式
+  - convert_psd_to_png
+    - psd导出png
+  - convert_vid_cut_size
     - 视频尺寸剪裁（仅裁剪，不压缩）
-  - copy_vid_cut_time
+  - convert_vid_cut_time
     - 视频时长裁剪
-  - copy_vid_frame
-    - 视频提取帧图片
-  - copy_vid_resize
+  - convert_vid_resize
     - 视频尺寸压缩裁剪
+  - convert_vid_to_frame
+    - 视频提取帧图片
+  - convert_gif_to_frame
+    - 提取gif中的帧
+  - convert_img_mirage
+    - 图片生成幻影坦克
+  - convert_img_to_bmp
+    - 图片转bmp格式
+  - convert_img_to_gif
+    - 图片合成gif
+  - convert_img_to_jpeg
+    - 图片转jpeg格式
+  - convert_psd_to_png
+    - psd导出png
+  - convert_vid_to_frame
+    - 视频提取帧图片
 
 - remove
   - remove_difference

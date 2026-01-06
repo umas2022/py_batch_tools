@@ -37,3 +37,15 @@ def video_compress(params):
                 print(f"成功处理文件 {filename}")
             except subprocess.CalledProcessError as e:
                 print(f"处理文件 {filename} 失败: {e.stderr.decode()}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\videos",
+        "path_out": r"D:\test\output",
+        "from": 10,
+        "to": 20,
+    }
+    video_compress(config)

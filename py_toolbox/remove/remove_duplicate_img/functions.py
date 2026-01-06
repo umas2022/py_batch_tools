@@ -75,3 +75,14 @@ def remove_duplicate_images(input_json):
                 for file_path in file_paths[1:]:
                     os.remove(file_path)
                     print(f"已删除重复图片: {file_path}")
+
+
+# ===================== 示例调用 =====================
+
+if __name__ == "__main__":
+    config = {
+        "path_in": r"D:\test\images",
+        "if_cut": False,
+        "cut_path": r"D:\test\duplicates",
+    }
+    remove_duplicate_images(config)
