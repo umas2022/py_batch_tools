@@ -53,11 +53,6 @@ def files_are_different(src, dst, time_tolerance=1):
     except OSError:
         return True
 
-        # 每隔 1 秒输出一次扫描状态
-        if time.time() - last_update > 1:
-            print(f"已扫描 {file_count} 个文件，总大小 {total_size/1024/1024:.2f} MB ...")
-            last_update = time.time()
-
 # ===================== 阶段 1：清理目标目录 =====================
 
 def delete_worker(task):
@@ -113,8 +108,6 @@ def clean_target(path_in, path_out, workers=4, report_interval=2.0):
         f"Deleted: {deleted} | Time: {time.time() - start:.1f}s"
     )
 
-    # 先计数
-    total_files, _ = count_files(path_in)
 
 # ===================== 阶段 2：构建复制任务 =====================
 
