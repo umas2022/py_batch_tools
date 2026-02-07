@@ -1,7 +1,7 @@
 '''
 create: 2024.10.03
 modify: 2026.02.07
-备份更新，首先删除path_out中的旧内容，再以path_in目录为基准拷贝新内容到path_out
+备份更新。以path_in目录为基准，首先删除path_out中的旧内容，再拷贝新内容到path_out
 shutil.copy2()保留文件元数据（时间戳等），删除时默认只比对文件大小和修改时间，compare_mode设为"content"时，进一步比对文件内容
 
 '''
