@@ -22,6 +22,58 @@ LOGGER = None
 ERROR_LOG_PATH = None
 
 
+def to_fs_path(path):
+    path = os.fspath(path)
+    if os.name != "nt" or not path:
+        return path
+    if path.startswith("\\\\?\\") or path.startswith("\\\\.\\"):
+        return path
+
+    abs_path = os.path.abspath(path)
+    if abs_path.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + abs_path[2:]
+    return "\\\\?\\" + abs_path
+
+
+def from_fs_path(path):
+    path = os.fspath(path)
+    if os.name != "nt" or not path:
+        return path
+    if path.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + path[8:]
+    if path.startswith("\\\\?\\"):
+        return path[4:]
+    return path
+
+
+def fs_exists(path):
+    return os.path.exists(to_fs_path(path))
+
+
+def fs_makedirs(path, exist_ok=True):
+    os.makedirs(to_fs_path(path), exist_ok=exist_ok)
+
+
+def fs_remove(path):
+    os.remove(to_fs_path(path))
+
+
+def fs_rmtree(path):
+    shutil.rmtree(to_fs_path(path))
+
+
+def fs_stat(path):
+    return os.stat(to_fs_path(path))
+
+
+def fs_copy2(src, dst):
+    shutil.copy2(to_fs_path(src), to_fs_path(dst))
+
+
+def fs_walk(path):
+    return os.walk(to_fs_path(path))
+
+
 def setup_logger(path_log):
     global LOGGER, ERROR_LOG_PATH
     LOGGER = logging.getLogger("backup_sync")
@@ -34,7 +86,7 @@ def setup_logger(path_log):
     LOGGER.addHandler(ch)
 
     if path_log:
-        os.makedirs(path_log, exist_ok=True)
+        fs_makedirs(path_log, exist_ok=True)
         log_file = os.path.join(
             path_log, f"backup_sync_{time.strftime('%Y%m%d_%H%M%S')}.log"
         )
@@ -79,17 +131,18 @@ def sync_log_dir(path_log, path_in, path_out, cancel_event=None):
     rel = os.path.relpath(path_log, path_in)
     dst_log = os.path.join(path_out, rel)
     log(f"[INFO] Syncing log directory to target: {dst_log}")
-    for root, dirs, files in os.walk(path_log):
+    for root, dirs, files in fs_walk(path_log):
+        root = from_fs_path(root)
         if cancel_event.is_set():
             return
         rel_root = os.path.relpath(root, path_log)
         dst_root = os.path.join(dst_log, rel_root)
-        os.makedirs(dst_root, exist_ok=True)
+        fs_makedirs(dst_root, exist_ok=True)
         for f in files:
             src = os.path.join(root, f)
             dst = os.path.join(dst_root, f)
             try:
-                shutil.copy2(src, dst)
+                fs_copy2(src, dst)
             except Exception as e:
                 log(f"error: {e} | src={src} | dst={dst}", level="error")
 
@@ -116,8 +169,8 @@ def files_are_different(src, dst, time_tolerance=1, compare_mode="mtime"):
     - mtime 差异在容忍范围内 → 认为相同
     """
     try:
-        src_stat = os.stat(src)
-        dst_stat = os.stat(dst)
+        src_stat = fs_stat(src)
+        dst_stat = fs_stat(dst)
 
         if src_stat.st_size != dst_stat.st_size:
             return True
@@ -126,7 +179,7 @@ def files_are_different(src, dst, time_tolerance=1, compare_mode="mtime"):
             return False
 
         if compare_mode == "content":
-            return not filecmp.cmp(src, dst, shallow=False)
+            return not filecmp.cmp(to_fs_path(src), to_fs_path(dst), shallow=False)
 
         return True  # mtime 不同，认为不同（不做内容比对）
 
@@ -141,9 +194,9 @@ def delete_worker(task, cancel_event):
         return False
     try:
         if kind == "file":
-            os.remove(path)
+            fs_remove(path)
         elif kind == "dir":
-            shutil.rmtree(path)
+            fs_rmtree(path)
         return True
     except Exception:
         return False
@@ -165,7 +218,8 @@ def clean_target(
     delete_tasks = []
     scanned = 0
 
-    for root, dirs, files in os.walk(path_out):
+    for root, dirs, files in fs_walk(path_out):
+        root = from_fs_path(root)
         if cancel_event.is_set():
             log("[INTERRUPTED] Cancelled during scanning")
             return
@@ -173,7 +227,7 @@ def clean_target(
         src_root = os.path.join(path_in, rel)
 
         # 整个目录不存在 → 删除
-        if not os.path.exists(src_root):
+        if not fs_exists(src_root):
             delete_tasks.append(("dir", root))
             dirs[:] = []
             continue
@@ -183,7 +237,7 @@ def clean_target(
             dst_file = os.path.join(root, f)
             src_file = os.path.join(src_root, f)
 
-            if not os.path.exists(src_file) or files_are_different(
+            if not fs_exists(src_file) or files_are_different(
                 src_file,
                 dst_file,
                 time_tolerance=time_tolerance,
@@ -220,7 +274,8 @@ def count_files(path, report_interval=2.0, cancel_event=None, exclude_dir=None):
     cancel_event = cancel_event or Event()
     exclude_dir = os.path.realpath(exclude_dir) if exclude_dir else None
 
-    for root, dirs, files in os.walk(path):
+    for root, dirs, files in fs_walk(path):
+        root = from_fs_path(root)
         if cancel_event.is_set():
             log("[INTERRUPTED] Cancelled during counting")
             return total
@@ -244,7 +299,8 @@ def count_files(path, report_interval=2.0, cancel_event=None, exclude_dir=None):
 def iter_copy_tasks(path_in, path_out, cancel_event=None, exclude_dir=None):
     cancel_event = cancel_event or Event()
     exclude_dir = os.path.realpath(exclude_dir) if exclude_dir else None
-    for root, dirs, files in os.walk(path_in):
+    for root, dirs, files in fs_walk(path_in):
+        root = from_fs_path(root)
         if cancel_event.is_set():
             log("[INTERRUPTED] Cancelled during task build")
             return
@@ -257,7 +313,7 @@ def iter_copy_tasks(path_in, path_out, cancel_event=None, exclude_dir=None):
             ]
         rel = os.path.relpath(root, path_in)
         dst_dir = os.path.join(path_out, rel)
-        os.makedirs(dst_dir, exist_ok=True)
+        fs_makedirs(dst_dir, exist_ok=True)
 
         for f in files:
             src = os.path.join(root, f)
@@ -279,13 +335,13 @@ def copy_one(src, dst, cancel_event):
     try:
         if cancel_event.is_set():
             return "cancelled"
-        if os.path.exists(dst):
+        if fs_exists(dst):
             return "skipped"
 
         dst_dir = os.path.dirname(dst)
-        os.makedirs(dst_dir, exist_ok=True)  # ⭐ 关键
+        fs_makedirs(dst_dir, exist_ok=True)
 
-        shutil.copy2(src, dst)
+        fs_copy2(src, dst)
         return "copied"
 
     except FileNotFoundError:
@@ -394,11 +450,11 @@ def copy_with_structure(cfg):
     log(f"[INIT] Source: {path_in}")
     log(f"[INIT] Target: {path_out}")
 
-    if not os.path.exists(path_in):
+    if not fs_exists(path_in):
         log("[ERROR] Source path does not exist", level="error")
         return
 
-    os.makedirs(path_out, exist_ok=True)
+    fs_makedirs(path_out, exist_ok=True)
 
     src_real = os.path.realpath(path_in)
     dst_real = os.path.realpath(path_out)
