@@ -12,6 +12,9 @@ import time
 import signal
 import logging
 import filecmp
+import stat
+import sys
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Event
 
@@ -19,7 +22,6 @@ from threading import Event
 # ===================== 参数与默认配置 =====================
 
 LOGGER = None
-ERROR_LOG_PATH = None
 
 
 def to_fs_path(path):
@@ -50,16 +52,50 @@ def fs_exists(path):
     return os.path.exists(to_fs_path(path))
 
 
+def fs_isdir(path):
+    return os.path.isdir(to_fs_path(path))
+
+
+def fs_isfile(path):
+    return os.path.isfile(to_fs_path(path))
+
+
+def fs_islink(path):
+    return os.path.islink(to_fs_path(path))
+
+
 def fs_makedirs(path, exist_ok=True):
     os.makedirs(to_fs_path(path), exist_ok=exist_ok)
 
 
+def fs_make_writable(path):
+    fs_path = to_fs_path(path)
+    os.chmod(fs_path, os.stat(fs_path).st_mode | stat.S_IWUSR)
+
+
 def fs_remove(path):
-    os.remove(to_fs_path(path))
+    fs_path = to_fs_path(path)
+    try:
+        os.remove(fs_path)
+    except PermissionError:
+        fs_make_writable(fs_path)
+        os.remove(fs_path)
 
 
 def fs_rmtree(path):
-    shutil.rmtree(to_fs_path(path))
+    def remove_readonly(function, failed_path, exc_info):
+        exception = exc_info if isinstance(exc_info, BaseException) else exc_info[1]
+        if not isinstance(exception, PermissionError):
+            raise exception
+        fs_make_writable(failed_path)
+        function(failed_path)
+
+    kwargs = (
+        {"onexc": remove_readonly}
+        if sys.version_info >= (3, 12)
+        else {"onerror": remove_readonly}
+    )
+    shutil.rmtree(to_fs_path(path), **kwargs)
 
 
 def fs_stat(path):
@@ -70,14 +106,20 @@ def fs_copy2(src, dst):
     shutil.copy2(to_fs_path(src), to_fs_path(dst))
 
 
+def fs_replace(src, dst):
+    os.replace(to_fs_path(src), to_fs_path(dst))
+
+
 def fs_walk(path):
     return os.walk(to_fs_path(path))
 
 
 def setup_logger(path_log):
-    global LOGGER, ERROR_LOG_PATH
+    global LOGGER
     LOGGER = logging.getLogger("backup_sync")
     LOGGER.setLevel(logging.INFO)
+    for handler in LOGGER.handlers:
+        handler.close()
     LOGGER.handlers.clear()
     fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
 
@@ -90,17 +132,22 @@ def setup_logger(path_log):
         log_file = os.path.join(
             path_log, f"backup_sync_{time.strftime('%Y%m%d_%H%M%S')}.log"
         )
-        ERROR_LOG_PATH = os.path.join(path_log, "errors.log")
         fh = logging.FileHandler(log_file, encoding="utf-8")
         fh.setFormatter(fmt)
         LOGGER.addHandler(fh)
 
-        eh = logging.FileHandler(ERROR_LOG_PATH, encoding="utf-8")
-        eh.setLevel(logging.ERROR)
-        eh.setFormatter(fmt)
-        LOGGER.addHandler(eh)
-
     return LOGGER
+
+
+def close_logger():
+    global LOGGER
+    if not LOGGER:
+        return
+    for handler in LOGGER.handlers:
+        handler.flush()
+        handler.close()
+    LOGGER.handlers.clear()
+    LOGGER = None
 
 
 def log(msg, level="info"):
@@ -157,6 +204,8 @@ def check_inputs(cfg):
     cfg.setdefault("compare_mode", "mtime")  # mtime | content
     cfg.setdefault("path_log", None)
     cfg.setdefault("max_in_flight", None)
+    cfg.setdefault("dry_run", False)
+    cfg.setdefault("allow_empty_source", False)
     return cfg
 
 
@@ -191,15 +240,19 @@ def files_are_different(src, dst, time_tolerance=1, compare_mode="mtime"):
 def delete_worker(task, cancel_event):
     kind, path = task
     if cancel_event.is_set():
-        return False
+        return False, kind, path, "cancelled"
     try:
         if kind == "file":
             fs_remove(path)
         elif kind == "dir":
             fs_rmtree(path)
-        return True
-    except Exception:
-        return False
+        else:
+            raise ValueError(f"Unknown delete task kind: {kind}")
+        if fs_exists(path):
+            raise OSError("path still exists after deletion")
+        return True, kind, path, None
+    except Exception as e:
+        return False, kind, path, str(e)
 
 
 def clean_target(
@@ -210,6 +263,7 @@ def clean_target(
     time_tolerance=1,
     compare_mode="mtime",
     cancel_event=None,
+    dry_run=False,
 ):
     log("\n[STEP 1/3] Cleaning target directory...")
     start = last = time.time()
@@ -226,8 +280,8 @@ def clean_target(
         rel = os.path.relpath(root, path_out)
         src_root = os.path.join(path_in, rel)
 
-        # 整个目录不存在 → 删除
-        if not fs_exists(src_root):
+        # 源端不存在此目录，或源端同名路径其实是文件 → 删除整个目标目录
+        if not fs_isdir(src_root):
             delete_tasks.append(("dir", root))
             dirs[:] = []
             continue
@@ -237,12 +291,8 @@ def clean_target(
             dst_file = os.path.join(root, f)
             src_file = os.path.join(src_root, f)
 
-            if not fs_exists(src_file) or files_are_different(
-                src_file,
-                dst_file,
-                time_tolerance=time_tolerance,
-                compare_mode=compare_mode,
-            ):
+            # 有源文件时交给复制阶段原子覆盖，避免先删后复制造成备份缺口。
+            if not fs_isfile(src_file):
                 delete_tasks.append(("file", dst_file))
 
             now = time.time()
@@ -250,19 +300,51 @@ def clean_target(
                 log(f"  Scanned: {scanned} | Delete queued: {len(delete_tasks)}")
                 last = now
 
+    if dry_run:
+        for kind, path in delete_tasks:
+            log(f"[DRY RUN] Would delete {kind}: {path}")
+        log(
+            f"[DRY RUN] Clean preview finished | Scanned: {scanned} | "
+            f"Would delete: {len(delete_tasks)} | "
+            f"Time: {time.time() - start:.1f}s"
+        )
+        return {
+            "queued": len(delete_tasks),
+            "deleted": 0,
+            "failed": 0,
+            "failures": [],
+            "dry_run": True,
+        }
+
     deleted = 0
+    failures = []
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futures = [ex.submit(delete_worker, t, cancel_event) for t in delete_tasks]
         for f in as_completed(futures):
             if cancel_event.is_set():
                 break
-            if f.result():
+            success, kind, path, error = f.result()
+            if success:
                 deleted += 1
+            else:
+                failures.append((kind, path, error))
+                log(
+                    f"[ERROR] Failed to delete {kind}: {path} | {error}",
+                    level="error",
+                )
 
     log(
         f"[DONE] Clean finished | Scanned: {scanned} | "
-        f"Deleted: {deleted} | Time: {time.time() - start:.1f}s"
+        f"Deleted: {deleted} | Failed: {len(failures)} | "
+        f"Time: {time.time() - start:.1f}s"
     )
+    return {
+        "queued": len(delete_tasks),
+        "deleted": deleted,
+        "failed": len(failures),
+        "failures": failures,
+        "dry_run": False,
+    }
 
 
 # ===================== 阶段 2：构建复制任务 =====================
@@ -286,7 +368,14 @@ def count_files(path, report_interval=2.0, cancel_event=None, exclude_dir=None):
             dirs[:] = [
                 d for d in dirs if not is_subpath(exclude_dir, os.path.join(root, d))
             ]
-        total += len(files)
+        total += sum(
+            1
+            for name in files
+            if not (
+                fs_islink(os.path.join(root, name))
+                and not fs_exists(os.path.join(root, name))
+            )
+        )
         now = time.time()
         if now - last > report_interval:
             log(f"  Counted: {total}")
@@ -313,11 +402,21 @@ def iter_copy_tasks(path_in, path_out, cancel_event=None, exclude_dir=None):
             ]
         rel = os.path.relpath(root, path_in)
         dst_dir = os.path.join(path_out, rel)
-        fs_makedirs(dst_dir, exist_ok=True)
+        if not files and not dirs:
+            try:
+                fs_makedirs(dst_dir, exist_ok=True)
+            except OSError as e:
+                log(
+                    f"error: Cannot create empty directory: {e} | dst={dst_dir}",
+                    level="error",
+                )
 
         for f in files:
             src = os.path.join(root, f)
             dst = os.path.join(dst_dir, f)
+            if fs_islink(src) and not fs_exists(src):
+                log(f"[SKIPPED] Broken symbolic link: {src}")
+                continue
             yield (src, dst)
 
 
@@ -331,17 +430,41 @@ def build_copy_tasks(path_in, path_out, cancel_event=None, exclude_dir=None):
 
 # ===================== 阶段 3：并行复制 =====================
 
-def copy_one(src, dst, cancel_event):
+def copy_one(
+    src,
+    dst,
+    cancel_event,
+    time_tolerance=1,
+    compare_mode="mtime",
+):
     try:
         if cancel_event.is_set():
             return "cancelled"
         if fs_exists(dst):
-            return "skipped"
+            if not fs_isfile(dst):
+                return f"error: Target is not a file | src={src} | dst={dst}"
+            if not files_are_different(
+                src,
+                dst,
+                time_tolerance=time_tolerance,
+                compare_mode=compare_mode,
+            ):
+                return "skipped"
 
         dst_dir = os.path.dirname(dst)
         fs_makedirs(dst_dir, exist_ok=True)
-
-        fs_copy2(src, dst)
+        temp_dst = os.path.join(
+            dst_dir,
+            f".{os.path.basename(dst)}.{uuid.uuid4().hex}.backup_tmp",
+        )
+        try:
+            fs_copy2(src, temp_dst)
+            if fs_exists(dst):
+                fs_make_writable(dst)
+            fs_replace(temp_dst, dst)
+        finally:
+            if fs_exists(temp_dst):
+                fs_remove(temp_dst)
         return "copied"
 
     except FileNotFoundError:
@@ -362,6 +485,8 @@ def parallel_copy_stream(
     total=None,
     max_in_flight=None,
     exclude_dir=None,
+    time_tolerance=1,
+    compare_mode="mtime",
 ):
     log("\n[STEP 3/3] Parallel copying...")
     start = last = time.time()
@@ -410,7 +535,16 @@ def parallel_copy_stream(
         ):
             if cancel_event.is_set():
                 break
-            futures.add(ex.submit(copy_one, src, dst, cancel_event))
+            futures.add(
+                ex.submit(
+                    copy_one,
+                    src,
+                    dst,
+                    cancel_event,
+                    time_tolerance,
+                    compare_mode,
+                )
+            )
             if len(futures) >= max_in_flight:
                 done_f = next(as_completed(futures))
                 futures.remove(done_f)
@@ -427,6 +561,12 @@ def parallel_copy_stream(
         f"Copied: {copied} | Skipped: {skipped} | "
         f"Failed: {failed} | Time: {time.time() - start:.1f}s"
     )
+    return {
+        "copied": copied,
+        "skipped": skipped,
+        "failed": failed,
+        "total": total,
+    }
 
 
 # ===================== 主入口 =====================
@@ -437,30 +577,58 @@ def copy_with_structure(cfg):
     path_out = cfg["path_out"]
     path_log = cfg["path_log"]
 
+    src_real = os.path.abspath(os.path.realpath(path_in))
+    dst_real = os.path.abspath(os.path.realpath(path_out))
+
+    if src_real == dst_real or is_subpath(src_real, dst_real) or is_subpath(dst_real, src_real):
+        print("[ERROR] Source and target paths overlap. Abort to avoid data loss.")
+        return False
+
     if path_log:
         log_real = os.path.realpath(path_log)
-        dst_real = os.path.realpath(path_out)
         if is_subpath(dst_real, log_real):
             print("[ERROR] path_log is inside path_out. This is not allowed.")
-            return
+            return False
 
-    setup_logger(path_log)
+    # 预演不创建日志目录，保证 dry_run 对文件系统完全只读。
+    setup_logger(None if cfg["dry_run"] else path_log)
 
     log("[INIT] Backup sync started")
     log(f"[INIT] Source: {path_in}")
-    log(f"[INIT] Target: {path_out}")
+    log(f"[INIT] To: {path_out}")
+    if cfg["dry_run"]:
+        log("[INIT] DRY RUN: no files or directories will be changed")
 
-    if not fs_exists(path_in):
-        log("[ERROR] Source path does not exist", level="error")
-        return
+    if not fs_isdir(path_in):
+        log("[ERROR] Source directory does not exist", level="error")
+        close_logger()
+        return False
 
-    fs_makedirs(path_out, exist_ok=True)
+    if not fs_exists(path_out):
+        if cfg["dry_run"]:
+            log("[DRY RUN] Target directory does not exist; it would be created")
+        else:
+            fs_makedirs(path_out, exist_ok=True)
+    elif not fs_isdir(path_out):
+        log("[ERROR] Target path exists but is not a directory", level="error")
+        close_logger()
+        return False
 
-    src_real = os.path.realpath(path_in)
-    dst_real = os.path.realpath(path_out)
-    if is_subpath(src_real, dst_real):
-        log("[ERROR] Target path is inside source path. Abort to avoid recursion.", level="error")
-        return
+    with os.scandir(to_fs_path(path_in)) as entries:
+        source_is_empty = next(entries, None) is None
+    target_has_entries = False
+    if fs_isdir(path_out):
+        with os.scandir(to_fs_path(path_out)) as entries:
+            target_has_entries = next(entries, None) is not None
+    if source_is_empty and target_has_entries and not cfg["allow_empty_source"]:
+        log(
+            "[ERROR] Source is empty while target is not. "
+            "Abort to avoid deleting the whole backup. "
+            "Set allow_empty_source=True only when this is intentional.",
+            level="error",
+        )
+        close_logger()
+        return False
 
     log_real = os.path.realpath(path_log) if path_log else None
     log_in_source = bool(log_real and is_subpath(src_real, log_real))
@@ -476,7 +644,7 @@ def copy_with_structure(cfg):
     old_handler = signal.signal(signal.SIGINT, _on_sigint)
 
     try:
-        clean_target(
+        clean_result = clean_target(
             path_in,
             path_out,
             workers=cfg["delete_workers"],
@@ -484,10 +652,32 @@ def copy_with_structure(cfg):
             time_tolerance=cfg["time_tolerance"],
             compare_mode=cfg["compare_mode"],
             cancel_event=cancel_event,
+            dry_run=cfg["dry_run"],
         )
 
         if cancel_event.is_set():
-            return
+            return False
+
+        cleanup_incomplete = clean_result["failed"] > 0
+        if cleanup_incomplete:
+            log(
+                "[WARNING] Target cleanup was incomplete. "
+                "Copying will continue so source files are still backed up.",
+                level="warning",
+            )
+
+        if cfg["dry_run"]:
+            total = count_files(
+                path_in,
+                cfg["report_interval"],
+                cancel_event=cancel_event,
+                exclude_dir=exclude_dir,
+            )
+            log(
+                f"[DRY RUN] Preview complete | Source files: {total} | "
+                f"Would delete: {clean_result['queued']}"
+            )
+            return True
 
         total = None
         if cfg["if_count"]:
@@ -498,12 +688,11 @@ def copy_with_structure(cfg):
                 exclude_dir=exclude_dir,
             )
             if total == 0:
-                log("[INFO] Nothing to copy")
-                return
+                log("[INFO] Source contains no files; directory structure will still be synced")
             if cancel_event.is_set():
-                return
+                return False
 
-        parallel_copy_stream(
+        copy_result = parallel_copy_stream(
             path_in,
             path_out,
             workers=cfg["copy_workers"],
@@ -512,15 +701,26 @@ def copy_with_structure(cfg):
             total=total,
             max_in_flight=cfg["max_in_flight"],
             exclude_dir=exclude_dir,
+            time_tolerance=cfg["time_tolerance"],
+            compare_mode=cfg["compare_mode"],
         )
 
         if log_in_source and not cancel_event.is_set():
             sync_log_dir(path_log, path_in, path_out, cancel_event=cancel_event)
+        if cleanup_incomplete:
+            log(
+                "[INCOMPLETE] Source copy was attempted, but some stale target "
+                "items could not be removed. Review the deletion errors above.",
+                level="error",
+            )
+        return copy_result["failed"] == 0 and not cleanup_incomplete
 
     except KeyboardInterrupt:
         log("\n[INTERRUPTED] Backup cancelled by user")
+        return False
     finally:
         signal.signal(signal.SIGINT, old_handler)
+        close_logger()
 
 
 # ===================== 示例调用 =====================
